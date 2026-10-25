@@ -1,7 +1,9 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import type { Adjust, Paper, Settings, Shot } from '../types'
+import type { CustomFrame } from '../lib/customFrames'
+import { FRAME_SLOTS, renderTemplate } from '../lib/customFrames'
 import { DEFAULT_ADJUST, FILTERS, colorOverlays, photoStyle } from '../lib/filters'
-import { LAYOUTS, getLayout } from '../lib/layouts'
+import { LAYOUTS, getLayout, resolveLayout } from '../lib/layouts'
 import { buildPrintSheet, downloadCanvas, fileStamp, printCanvas } from '../lib/output'
 import { ensureFonts, renderComposite } from '../lib/render'
 import { FONTS, THEMES } from '../lib/themes'
@@ -14,6 +16,9 @@ interface Props {
   settings: Settings
   onChange: (patch: Partial<Settings>) => void
   date?: Date
+  frames: CustomFrame[]
+  onAddFrame: (file: File) => Promise<void>
+  onDeleteFrame: (frame: CustomFrame) => void
   onBack: () => void
   onHome: () => void
   notify: (message: string) => void
@@ -54,12 +59,43 @@ const TITLE_IDEAS = ['우리의 네컷 ♥', 'BEST FRIENDS', 'HAPPY DAY', '오�
 
 const NO_PHOTOS: HTMLCanvasElement[] = []
 
-export default function EditScreen({ shots, settings, onChange, date, onBack, onHome, notify }: Props) {
+export default function EditScreen({
+  shots,
+  settings,
+  onChange,
+  date,
+  frames,
+  onAddFrame,
+  onDeleteFrame,
+  onBack,
+  onHome,
+  notify,
+}: Props) {
   const [tab, setTab] = useState<Tab>('layout')
   const [busy, setBusy] = useState(false)
-  const layout = getLayout(settings.layoutId)
+  const [importing, setImporting] = useState(false)
+  const layout = resolveLayout(settings)
   const previews = useMemo(() => shots.map((shot) => shot.preview), [shots])
   const sample = shots[0]
+  const activeFrame = frames.find((frame) => frame.id === settings.frameId)
+  // 투명 칸 프레임은 구조와 디자인을 모두 대신한다
+  const overlayActive = activeFrame?.kind === 'overlay'
+
+  async function handleImport(file: File) {
+    if (importing) return
+    setImporting(true)
+    try {
+      await onAddFrame(file)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleTemplate() {
+    const base = getLayout(settings.layoutId)
+    await downloadCanvas(renderTemplate(base), `프레임템플릿_${base.name}_${base.width}x${base.height}.png`)
+    notify(`'${base.name}' 템플릿을 받았어요. 분홍 점선 안쪽은 투명하게 남겨 주세요.`)
+  }
 
   const setAdjust = (key: keyof Adjust, value: number) => onChange({ adjust: { ...settings.adjust, [key]: value } })
 
@@ -139,54 +175,139 @@ export default function EditScreen({ shots, settings, onChange, date, onBack, on
 
         <div className="tab-body">
           {tab === 'layout' && (
-            <div className="option-grid">
-              {LAYOUTS.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  className={`option-card${l.id === settings.layoutId ? ' active' : ''}`}
-                  onClick={() => onChange({ layoutId: l.id })}
-                >
-                  <span className="option-thumb">
-                    <PreviewCanvas photos={previews} settings={{ ...settings, layoutId: l.id }} date={date} scale={0.12} />
-                  </span>
-                  <b>{l.name}</b>
-                  <small>{l.desc}</small>
-                </button>
-              ))}
-            </div>
+            <>
+              {overlayActive && (
+                <p className="tip">
+                  지금은 내 프레임 ‘{activeFrame.name}’을 쓰고 있어요. 아래 구조를 고르면 내 프레임 사용이 해제돼요.
+                </p>
+              )}
+              <div className="option-grid">
+                {LAYOUTS.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    className={`option-card${!overlayActive && l.id === settings.layoutId ? ' active' : ''}`}
+                    onClick={() => onChange(overlayActive ? { layoutId: l.id, frameId: '' } : { layoutId: l.id })}
+                  >
+                    <span className="option-thumb">
+                      <PreviewCanvas
+                        photos={previews}
+                        settings={{ ...settings, layoutId: l.id, frameId: overlayActive ? '' : settings.frameId }}
+                        date={date}
+                        scale={0.12}
+                      />
+                    </span>
+                    <b>{l.name}</b>
+                    <small>{l.desc}</small>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           {tab === 'frame' && (
             <>
-              <div className="option-grid">
-                {THEMES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`option-card${t.id === settings.themeId ? ' active' : ''}`}
-                    onClick={() => onChange({ themeId: t.id })}
-                  >
-                    <span className="option-thumb">
-                      <PreviewCanvas photos={NO_PHOTOS} settings={{ ...settings, themeId: t.id }} date={date} scale={0.1} />
-                    </span>
-                    <b>{t.name}</b>
-                  </button>
-                ))}
-              </div>
-              {settings.themeId === 'custom' && (
+              <Field label="내 프레임">
+                <label
+                  className={`drop-zone${importing ? ' busy' : ''}`}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const file = e.dataTransfer.files[0]
+                    if (file) void handleImport(file)
+                  }}
+                >
+                  <input
+                    type="file"
+                    accept="image/png,image/webp,image/jpeg"
+                    disabled={importing}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (file) void handleImport(file)
+                    }}
+                  />
+                  <b>{importing ? '프레임을 살펴보는 중…' : '＋ 프레임 이미지 추가'}</b>
+                  <span>클릭하거나 이미지를 끌어다 놓으세요</span>
+                </label>
+                <p className="tip">
+                  사진 자리를 <b>투명하게 비운 PNG</b>를 올리면 칸 {FRAME_SLOTS}개를 자동으로 찾아 그 아래에 사진을
+                  넣어요. 투명한 곳이 없는 이미지는 지금 고른 구조의 배경으로 깔려요.
+                </p>
+                <button type="button" className="btn ghost" onClick={() => void handleTemplate()}>
+                  📐 ‘{getLayout(settings.layoutId).name}’ 템플릿 받기
+                </button>
+                {frames.length > 0 && (
+                  <div className="option-grid">
+                    {frames.map((frame) => (
+                      <div key={frame.id} className="option-wrap">
+                        <button
+                          type="button"
+                          className={`option-card${frame.id === settings.frameId ? ' active' : ''}`}
+                          onClick={() => onChange({ frameId: frame.id })}
+                        >
+                          <span className="option-thumb">
+                            <PreviewCanvas
+                              photos={NO_PHOTOS}
+                              settings={{ ...settings, frameId: frame.id }}
+                              date={date}
+                              scale={0.1}
+                            />
+                          </span>
+                          <b>{frame.name}</b>
+                          <small>{frame.kind === 'overlay' ? `투명 칸 ${FRAME_SLOTS}개` : '배경 이미지'}</small>
+                        </button>
+                        <button
+                          type="button"
+                          className="option-delete"
+                          title="삭제"
+                          aria-label={`${frame.name} 삭제`}
+                          onClick={() => onDeleteFrame(frame)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Field>
+              <Field label="기본 디자인">
+                <div className="option-grid">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`option-card${!settings.frameId && t.id === settings.themeId ? ' active' : ''}`}
+                      onClick={() => onChange({ themeId: t.id, frameId: '' })}
+                    >
+                      <span className="option-thumb">
+                        <PreviewCanvas
+                          photos={NO_PHOTOS}
+                          settings={{ ...settings, themeId: t.id, frameId: '' }}
+                          date={date}
+                          scale={0.1}
+                        />
+                      </span>
+                      <b>{t.name}</b>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              {!settings.frameId && settings.themeId === 'custom' && (
                 <label className="color-field">
                   <span>배경색</span>
                   <input type="color" value={settings.customBg} onChange={(e) => onChange({ customBg: e.target.value })} />
                 </label>
               )}
-              <Range
-                label="사진 모서리 둥글게"
-                value={settings.radius}
-                min={0}
-                max={80}
-                onChange={(radius) => onChange({ radius })}
-              />
+              {!overlayActive && (
+                <Range
+                  label="사진 모서리 둥글게"
+                  value={settings.radius}
+                  min={0}
+                  max={80}
+                  onChange={(radius) => onChange({ radius })}
+                />
+              )}
             </>
           )}
 
@@ -243,6 +364,9 @@ export default function EditScreen({ shots, settings, onChange, date, onBack, on
 
           {tab === 'text' && (
             <>
+              {overlayActive && (
+                <p className="tip">투명 칸 프레임을 쓰는 중에는 문구·날짜 대신 프레임 이미지에 그린 그대로 나와요.</p>
+              )}
               <Field label="문구 (비워 두면 표시하지 않아요)">
                 <input
                   className="text-input"

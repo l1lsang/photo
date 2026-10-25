@@ -1,8 +1,10 @@
 import type { FontOption, Settings, Theme } from '../types'
+import { getCustomFrame } from './customFrames'
 
 export const THEMES: Theme[] = [
   { id: 'white', name: '화이트', bg: '#ffffff', text: '#222222', deco: 'none' },
   { id: 'black', name: '블랙', bg: '#141414', text: '#ffffff', deco: 'none' },
+  { id: 'line', name: '라인', bg: '#ffffff', text: '#222222', deco: 'none', stroke: '#222222' },
   {
     id: 'pink',
     name: '러블리 핑크',
@@ -80,8 +82,15 @@ export function isDark(hex: string): boolean {
   return luminance < 140
 }
 
-/** '직접 고르기' 테마는 사용자가 고른 배경색으로 바꾸고 글자색은 대비가 되게 맞춘다 */
+/**
+ * 배경 이미지로 추가한 내 프레임을 골랐다면 그 이미지를 배경으로 쓴다.
+ * '직접 고르기' 테마는 사용자가 고른 배경색으로 바꾸고 글자색은 대비가 되게 맞춘다.
+ */
 export function resolveTheme(settings: Settings): Theme {
+  const frame = getCustomFrame(settings.frameId)
+  if (frame?.kind === 'background') {
+    return { id: frame.id, name: frame.name, bg: '#ffffff', text: frame.textColor, deco: 'none', bgImage: frame.image }
+  }
   const theme = getTheme(settings.themeId)
   if (theme.id !== 'custom') return theme
   return { ...theme, bg: settings.customBg, text: isDark(settings.customBg) ? '#ffffff' : '#2b2530' }

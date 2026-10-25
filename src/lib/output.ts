@@ -1,5 +1,5 @@
 import type { Layout, Paper } from '../types'
-import { createCanvas } from './render'
+import { createCanvas } from './canvas'
 
 /** 스트립은 2장을 이어 붙여 한 장에 인쇄한다 (반으로 잘라 나눠 갖기) */
 export function buildPrintSheet(image: HTMLCanvasElement, layout: Layout, double: boolean): HTMLCanvasElement {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { Settings, Shot } from '../types'
 import { photoStyle } from '../lib/filters'
-import { getLayout } from '../lib/layouts'
+import { resolveLayout } from '../lib/layouts'
 import PreviewCanvas from './PreviewCanvas'
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export default function SelectScreen({ shots, selected, onSelect, settings, date, onBack, onNext, notify }: Props) {
-  const need = getLayout(settings.layoutId).slots.length
+  const need = resolveLayout(settings).slots.length
   const photos = useMemo(() => selected.map((i) => shots[i]?.preview), [selected, shots])
   const full = selected.length >= need
 

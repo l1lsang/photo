@@ -5,7 +5,10 @@ import EditScreen from './components/EditScreen'
 import HomeScreen from './components/HomeScreen'
 import SelectScreen from './components/SelectScreen'
 import ShootScreen from './components/ShootScreen'
-import { getLayout } from './lib/layouts'
+import type { CustomFrame } from './lib/customFrames'
+import { frameFromRecord, importFrame, listCustomFrames, registerFrames, unregisterFrame } from './lib/customFrames'
+import { deleteFrameRecord, loadFrameRecords, saveFrameRecord } from './lib/frameStore'
+import { resolveLayout } from './lib/layouts'
 import { loadSettings, saveSettings } from './lib/settings'
 
 type Step = 'home' | 'shoot' | 'select' | 'edit'
@@ -29,8 +32,32 @@ export default function App() {
   const [shots, setShots] = useState<Shot[]>([])
   const [selected, setSelected] = useState<number[]>([])
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null)
+  const [frames, setFrames] = useState<CustomFrame[]>([])
 
   useEffect(() => saveSettings(settings), [settings])
+
+  // 지난번에 추가해 둔 내 프레임 불러오기
+  useEffect(() => {
+    let cancelled = false
+    loadFrameRecords()
+      .then((records) => Promise.allSettled(records.map(frameFromRecord)))
+      .then((results) => {
+        if (cancelled) return
+        registerFrames(results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : [])))
+        const loaded = listCustomFrames()
+        setFrames(loaded)
+        // 고른 프레임이 사라졌다면 기본 구조·디자인으로 돌아간다
+        setSettings((prev) =>
+          prev.frameId && !loaded.some((f) => f.id === prev.frameId) ? { ...prev, frameId: '' } : prev,
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setSettings((prev) => (prev.frameId ? { ...prev, frameId: '' } : prev))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!toast) return
@@ -38,7 +65,7 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [toast])
 
-  const need = getLayout(settings.layoutId).slots.length
+  const need = resolveLayout(settings).slots.length
   const date = useMemo(() => (shots.length ? new Date(shots[0].takenAt) : undefined), [shots])
   const chosen = useMemo(() => selected.map((i) => shots[i]).filter(Boolean), [selected, shots])
   const reachable: Record<Step, boolean> = {
@@ -50,6 +77,32 @@ export default function App() {
 
   const update = (patch: Partial<Settings>) => setSettings((prev) => ({ ...prev, ...patch }))
   const notify = (text: string) => setToast((prev) => ({ id: (prev?.id ?? 0) + 1, text }))
+
+  async function addFrame(file: File) {
+    const result = await importFrame(file)
+    if ('error' in result) {
+      notify(result.error)
+      return
+    }
+    const { frame } = result
+    registerFrames([frame])
+    setFrames(listCustomFrames())
+    update({ frameId: frame.id })
+    try {
+      await saveFrameRecord(frame.record)
+      notify(frame.kind === 'overlay' ? '프레임을 추가했어요! 투명한 사진 칸 4개를 찾았어요 ✨' : '배경 이미지 프레임으로 추가했어요 ✨')
+    } catch {
+      notify('프레임은 추가했지만 브라우저에 저장하지 못했어요. 새로고침하면 사라져요.')
+    }
+  }
+
+  function deleteFrame(frame: CustomFrame) {
+    if (!confirm(`'${frame.name}' 프레임을 삭제할까요?`)) return
+    unregisterFrame(frame.id)
+    setFrames(listCustomFrames())
+    if (settings.frameId === frame.id) update({ frameId: '' })
+    deleteFrameRecord(frame.id).catch(() => undefined)
+  }
 
   function clearShots() {
     setShots([])
@@ -127,6 +180,9 @@ export default function App() {
             settings={settings}
             onChange={update}
             date={date}
+            frames={frames}
+            onAddFrame={addFrame}
+            onDeleteFrame={deleteFrame}
             onBack={() => setStep('select')}
             onHome={goHome}
             notify={notify}

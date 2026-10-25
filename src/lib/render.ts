@@ -1,7 +1,8 @@
 import type { Layout, Rect, Settings, Slot, Theme } from '../types'
+import { createCanvas } from './canvas'
 import { buildCssFilter, colorOverlays, getFilter } from './filters'
-import { getLayout } from './layouts'
-import { baseColor, getFont, isDark, resolveTheme } from './themes'
+import { resolveLayout } from './layouts'
+import { baseColor, getFont, getTheme, isDark, resolveTheme } from './themes'
 
 export interface RenderOptions {
   photos: readonly (HTMLCanvasElement | undefined)[]
@@ -26,13 +27,8 @@ interface Spot {
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif'
-
-export function createCanvas(width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(width))
-  canvas.height = Math.max(1, Math.round(height))
-  return canvas
-}
+/** 라인 테마의 선 굵기 (300dpi 기준 약 0.35mm) */
+const STROKE_WIDTH = 4
 
 function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return canvas.getContext('2d')!
@@ -40,16 +36,23 @@ function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 
 /** 프레임 + 사진 4장 + 문구를 합친 최종 이미지를 만든다 */
 export function renderComposite({ photos, settings, scale = 1, date = new Date() }: RenderOptions): HTMLCanvasElement {
-  const layout = getLayout(settings.layoutId)
+  const layout = resolveLayout(settings)
   const canvas = createCanvas(layout.width * scale, layout.height * scale)
   const ctx = context2d(canvas)
   ctx.scale(canvas.width / layout.width, canvas.height / layout.height)
 
-  const scene: Scene = { ctx, layout, theme: resolveTheme(settings), settings, scale }
+  // 직접 추가한 프레임은 이미지가 디자인을 대신하므로 기본 디자인은 쓰지 않는다
+  const theme = layout.overlay ? getTheme('white') : resolveTheme(settings)
+  const scene: Scene = { ctx, layout, theme, settings, scale }
   paintBackground(scene)
   paintDecorations(scene)
   layout.slots.forEach((slot, i) => paintSlot(scene, slot, i, photos[i]))
-  paintTitle(scene, date)
+  if (layout.overlay) {
+    // 사진을 먼저 깔고 투명 칸이 뚫린 프레임을 위에 덮는다
+    ctx.drawImage(layout.overlay, 0, 0, layout.width, layout.height)
+  } else {
+    paintTitle(scene, date)
+  }
   return canvas
 }
 
@@ -75,6 +78,14 @@ function paintBackground({ ctx, layout, theme }: Scene) {
     ctx.fillStyle = theme.bg
   }
   ctx.fillRect(0, 0, layout.width, layout.height)
+
+  if (theme.bgImage) drawCover(ctx, theme.bgImage, layout.width, layout.height, false, 'none')
+
+  if (theme.stroke) {
+    ctx.lineWidth = STROKE_WIDTH
+    ctx.strokeStyle = theme.stroke
+    ctx.strokeRect(STROKE_WIDTH / 2, STROKE_WIDTH / 2, layout.width - STROKE_WIDTH, layout.height - STROKE_WIDTH)
+  }
 }
 
 // ---------- 사진 ----------
@@ -97,8 +108,11 @@ function paintSlot({ ctx, layout, theme, settings, scale }: Scene, slot: Slot, i
     ctx.restore()
   }
 
+  // 내 프레임은 칸 모양을 프레임 이미지가 정하므로 사진은 네모 그대로 깐다
+  const radius = layout.overlay ? 0 : Math.min(settings.radius, w / 2, h / 2)
+  ctx.save()
   ctx.beginPath()
-  ctx.roundRect(-w / 2, -h / 2, w, h, Math.min(settings.radius, w / 2, h / 2))
+  ctx.roundRect(-w / 2, -h / 2, w, h, radius)
   ctx.clip()
 
   if (photo) {
@@ -112,6 +126,15 @@ function paintSlot({ ctx, layout, theme, settings, scale }: Scene, slot: Slot, i
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(String(index + 1), 0, 0)
+  }
+  ctx.restore()
+
+  if (theme.stroke) {
+    ctx.beginPath()
+    ctx.roundRect(-w / 2, -h / 2, w, h, radius)
+    ctx.lineWidth = STROKE_WIDTH
+    ctx.strokeStyle = theme.stroke
+    ctx.stroke()
   }
   ctx.restore()
 }
@@ -211,11 +234,11 @@ function formatDate(date: Date): string {
 }
 
 function paintTitle({ ctx, layout, theme, settings }: Scene, date: Date) {
+  const area = layout.title
   const title = settings.title.trim()
   const dateText = settings.showDate ? formatDate(date) : ''
-  if (!title && !dateText) return
+  if (!area || (!title && !dateText)) return
 
-  const area = layout.title
   const font = getFont(settings.font)
   const titleFont = (size: number) => `${font.weight} ${size}px "${font.family}", "Malgun Gothic", sans-serif`
   const dateFont = (size: number) => `500 ${size}px "Noto Sans KR", "Malgun Gothic", sans-serif`
@@ -306,7 +329,7 @@ function blockedAreas(layout: Layout): Rect[] {
     }
   })
   const t = layout.title
-  areas.push({ x: t.x + t.w * 0.12, y: t.y + t.h * 0.14, w: t.w * 0.76, h: t.h * 0.72 })
+  if (t) areas.push({ x: t.x + t.w * 0.12, y: t.y + t.h * 0.14, w: t.w * 0.76, h: t.h * 0.72 })
   return areas
 }
 

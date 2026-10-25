@@ -4,7 +4,7 @@ import type { Settings, Shot } from '../types'
 import { useCamera } from '../hooks/useCamera'
 import { captureFrame } from '../lib/capture'
 import { FILTERS, buildCssFilter, colorOverlays, photoStyle } from '../lib/filters'
-import { getLayout } from '../lib/layouts'
+import { resolveLayout } from '../lib/layouts'
 import { playBeep, playShutter } from '../lib/sound'
 import { Field, Segmented, Toggle } from './ui'
 
@@ -48,7 +48,7 @@ export default function ShootScreen({ settings, onChange, shots, maxShots, onCap
     [],
   )
 
-  const need = getLayout(settings.layoutId).slots.length
+  const need = resolveLayout(settings).slots.length
   const done = shots.length >= maxShots
 
   // 중지 버튼에 바로 반응하도록 잘게 나눠 기다린다

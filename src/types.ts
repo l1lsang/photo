@@ -22,10 +22,12 @@ export interface Layout {
   margin: number
   slots: Slot[]
   /** 문구와 날짜가 들어가는 영역 */
-  title: Rect
+  title?: Rect
   print: PrintMode
   /** 폴라로이드처럼 사진 뒤에 흰 카드를 깔 때 */
   card?: { pad: number; bottom: number }
+  /** 직접 추가한 프레임: 사진 위에 덮는 이미지 (사진 칸은 투명) */
+  overlay?: HTMLCanvasElement
 }
 
 export type Deco = 'none' | 'hearts' | 'clouds' | 'film' | 'checker' | 'dots' | 'sparkle' | 'emoji'
@@ -41,6 +43,10 @@ export interface Theme {
   emojis?: string[]
   /** 배경이 복잡할 때 문구 뒤에 까는 라벨 색 */
   label?: string
+  /** 사진과 프레임 가장자리에 그리는 테두리 선 색 */
+  stroke?: string
+  /** 직접 추가한 배경 이미지 */
+  bgImage?: HTMLCanvasElement
 }
 
 export interface FontOption {
@@ -73,6 +79,8 @@ export type Paper = 'photo' | 'a4'
 export interface Settings {
   layoutId: string
   themeId: string
+  /** 직접 추가한 프레임 id (없으면 '') — 고르면 기본 구조·디자인보다 우선 */
+  frameId: string
   customBg: string
   filterId: string
   adjust: Adjust

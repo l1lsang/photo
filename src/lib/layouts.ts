@@ -1,4 +1,5 @@
-import type { Layout, Slot } from '../types'
+import type { Layout, Settings, Slot } from '../types'
+import { getCustomFrame } from './customFrames'
 
 // 모든 좌표는 300dpi 인쇄 기준 픽셀입니다 (600px = 2인치)
 
@@ -10,6 +11,11 @@ function column(x: number, top: number, w: number, h: number, gap: number): Slot
 /** 같은 크기의 칸 4개를 가로로 늘어놓는다 */
 function row(left: number, y: number, w: number, h: number, gap: number): Slot[] {
   return [0, 1, 2, 3].map((i) => ({ x: left + i * (w + gap), y, w, h }))
+}
+
+/** 같은 크기의 칸 4개를 2×2 로 놓는다 */
+function grid(left: number, top: number, w: number, h: number, gap: number): Slot[] {
+  return [0, 1, 2, 3].map((i) => ({ x: left + (i % 2) * (w + gap), y: top + Math.floor(i / 2) * (h + gap), w, h }))
 }
 
 export const LAYOUTS: Layout[] = [
@@ -25,19 +31,69 @@ export const LAYOUTS: Layout[] = [
     print: 'pair-h',
   },
   {
+    id: 'strip-slim',
+    name: '슬림 세로',
+    desc: '얇은 경계선',
+    width: 600,
+    height: 1800,
+    margin: 24,
+    slots: column(24, 24, 552, 380, 10),
+    title: { x: 0, y: 1574, w: 600, h: 226 },
+    print: 'pair-h',
+  },
+  {
+    id: 'strip-top',
+    name: '로고 위 세로',
+    desc: '문구가 위에',
+    width: 600,
+    height: 1800,
+    margin: 30,
+    slots: column(30, 230, 540, 374, 14),
+    title: { x: 0, y: 0, w: 600, h: 230 },
+    print: 'pair-h',
+  },
+  {
     id: 'grid',
     name: '2×2 그리드',
     desc: '4×6 바둑판',
     width: 1200,
     height: 1800,
     margin: 60,
-    slots: [
-      { x: 60, y: 70, w: 525, h: 700 },
-      { x: 615, y: 70, w: 525, h: 700 },
-      { x: 60, y: 800, w: 525, h: 700 },
-      { x: 615, y: 800, w: 525, h: 700 },
-    ],
+    slots: grid(60, 70, 525, 700, 30),
     title: { x: 0, y: 1500, w: 1200, h: 300 },
+    print: 'single',
+  },
+  {
+    id: 'grid-slim',
+    name: '2×2 슬림',
+    desc: '얇은 경계선',
+    width: 1200,
+    height: 1800,
+    margin: 40,
+    slots: grid(40, 40, 552, 737, 16),
+    title: { x: 0, y: 1530, w: 1200, h: 270 },
+    print: 'single',
+  },
+  {
+    id: 'grid-frame',
+    name: '2×2 굵은 틀',
+    desc: '넓은 하단 띠',
+    width: 1200,
+    height: 1800,
+    margin: 80,
+    slots: grid(80, 80, 516, 666, 8),
+    title: { x: 0, y: 1420, w: 1200, h: 380 },
+    print: 'single',
+  },
+  {
+    id: 'grid-top',
+    name: '로고 위 2×2',
+    desc: '문구가 위에',
+    width: 1200,
+    height: 1800,
+    margin: 50,
+    slots: grid(50, 290, 540, 720, 20),
+    title: { x: 0, y: 0, w: 1200, h: 290 },
     print: 'single',
   },
   {
@@ -115,4 +171,9 @@ export const LAYOUTS: Layout[] = [
 
 export function getLayout(id: string): Layout {
   return LAYOUTS.find((layout) => layout.id === id) ?? LAYOUTS[0]
+}
+
+/** 투명 칸이 있는 내 프레임을 골랐다면 그 구조를, 아니면 고른 기본 구조를 쓴다 */
+export function resolveLayout(settings: Pick<Settings, 'layoutId' | 'frameId'>): Layout {
+  return getCustomFrame(settings.frameId)?.layout ?? getLayout(settings.layoutId)
 }

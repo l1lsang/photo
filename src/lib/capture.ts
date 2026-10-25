@@ -1,5 +1,5 @@
 import type { Shot } from '../types'
-import { createCanvas } from './render'
+import { createCanvas } from './canvas'
 
 let shotSeq = 0
 

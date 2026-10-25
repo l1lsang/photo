@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Settings } from '../types'
-import { getLayout } from '../lib/layouts'
+import { resolveLayout } from '../lib/layouts'
 import { ensureFonts, renderComposite } from '../lib/render'
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
 /** 설정이 바뀔 때마다 한 프레임에 한 번만 다시 그리는 결과 미리보기 */
 export default function PreviewCanvas({ photos, settings, date, scale = 0.5, className }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const layout = getLayout(settings.layoutId)
+  const layout = resolveLayout(settings)
 
   useEffect(() => {
     let cancelled = false

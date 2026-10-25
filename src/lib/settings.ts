@@ -8,6 +8,7 @@ const STORAGE_KEY = 'four-cut-studio:settings'
 export const DEFAULT_SETTINGS: Settings = {
   layoutId: 'strip',
   themeId: 'white',
+  frameId: '',
   customBg: '#ffe3ec',
   filterId: 'none',
   adjust: DEFAULT_ADJUST,
